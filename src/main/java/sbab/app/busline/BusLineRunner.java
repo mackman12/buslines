@@ -34,11 +34,15 @@ public class BusLineRunner implements CommandLineRunner {
 
         var journeyPatternsGrouped = getJourneyPatternsGroupedByLine();
 
+        var stopPointResponse = (StopPointResponse) integrationService.request(ObjectType.STOP_POINT);
+        verifyResponseHasData(stopPointResponse.getResponseData().getResult());
+        var stopPoints = stopPointResponse.getResponseData().getResult();
+
         var top10BusLines = journeyPatternsGrouped.entrySet()
             .stream()
             .sorted(sortByValueCount.reversed())
             .limit(10)
-            .map(journeyPatterns -> buildBusLine(journeyPatterns))
+            .map(journeyPatterns -> buildBusLine(stopPoints, journeyPatterns))
             .collect(Collectors.toList());
 
         logTop10BusLines(top10BusLines);
@@ -64,9 +68,11 @@ public class BusLineRunner implements CommandLineRunner {
             .forEach(index -> log.info((index + 1) + ". Line-number: " + lines.get(index)));
     }
 
-    private Map<String, List<JourneyPattern>> getJourneyPatternsGroupedByLine() {
+    private Map<String, List<JourneyPattern>> getJourneyPatternsGroupedByLine() throws Exception {
         var lineResponse = (LineResponse) integrationService.request(ObjectType.LINE);
+        verifyResponseHasData(lineResponse.getResponseData().getResult());
         var journeyPatternResponse = (JourneyPatternResponse) integrationService.request(ObjectType.JOURNEY_PATTERN);
+        verifyResponseHasData(journeyPatternResponse.getResponseData().getResult());
 
         var lines = filterBusLines(lineResponse);
 
@@ -77,16 +83,14 @@ public class BusLineRunner implements CommandLineRunner {
         return journeyPatternsGrouped;
     }
 
-    private BusLine buildBusLine(Map.Entry<String, List<JourneyPattern>> journeyPatterns) {
+    private BusLine buildBusLine(List<StopPoint> stopPoints, Map.Entry<String, List<JourneyPattern>> journeyPatterns) {
         return BusLine.builder()
             .lineNumber(journeyPatterns.getKey())
-            .busStops(buildBusStops(journeyPatterns))
+            .busStops(buildBusStops(stopPoints, journeyPatterns))
             .build();
     }
 
-    private List<String> buildBusStops(Map.Entry<String, List<JourneyPattern>> journeyPatterns) {
-        var stopPointResponse = (StopPointResponse) integrationService.request(ObjectType.STOP_POINT);
-        var stopPoints = stopPointResponse.getResponseData().getResult();
+    private List<String> buildBusStops(List<StopPoint> stopPoints, Map.Entry<String, List<JourneyPattern>> journeyPatterns) {
 
         return journeyPatterns.getValue()
             .stream()
@@ -138,6 +142,13 @@ public class BusLineRunner implements CommandLineRunner {
             .map(busLine -> busLine.getLineNumber())
             .collect(Collectors.toList())
             .contains(journeyPattern.getLineNumber());
+    }
+
+    private static <T> void verifyResponseHasData(List<T> responseData) throws Exception {
+        if(responseData.size() == 0){
+            throw new Exception("No responses found, be advised that Trafik-Lab API has a max limit of 5 requests per minute per user, try again in a minute.");
+        }
+
     }
 
 }
